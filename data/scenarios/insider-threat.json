@@ -1,0 +1,174 @@
+{
+  "scenario_id": "insider-threat",
+  "name": "Scenario 3: Stale Contractor Privileges & Insider Threat",
+  "description": "A contractor whose contract ended 90 days ago retained valid external identity credentials. Due to an unreviewed IAM trust policy, the contractor's legacy role still holds a CAN_ASSUME trust relationship to a high-privilege SecOpsBreakGlassRole, enabling direct access to the corporate secrets vault, master encryption keys, and internal identity clusters.",
+  "metadata": {
+    "cloud_provider": "AWS",
+    "region": "us-east-1",
+    "author": "AegisGraph Core Team",
+    "version": "1.0.0"
+  },
+  "alert": {
+    "id": "alert-stale-contractor-44",
+    "type": "STALE_CREDENTIAL_ACCESS",
+    "severity": "CRITICAL",
+    "target_node": "usr-contractor-ext-44",
+    "message": "Deprovisioned contractor account usr-contractor-ext-44 authenticated via legacy SSO and invoked sts:AssumeRole for role/LegacyContractorRole",
+    "timestamp": "2026-10-15T09:45:00Z",
+    "source": "AWS CloudTrail & Okta System Log"
+  },
+  "nodes": [
+    {
+      "id": "internet",
+      "label": "Internet",
+      "name": "Global Internet",
+      "data_class": "public",
+      "crown_jewel": false
+    },
+    {
+      "id": "vpn-corp-gateway",
+      "label": "VPNConnection",
+      "name": "corp-vpn-gateway-east",
+      "crown_jewel": false,
+      "properties": {
+        "status": "active",
+        "ip": "198.51.100.4"
+      }
+    },
+    {
+      "id": "usr-contractor-ext-44",
+      "label": "IAMUser",
+      "name": "usr-contractor-ext-44",
+      "crown_jewel": false,
+      "compliance_violations": ["SOC2-CC6.2", "PCI-DSS-8.1.4"],
+      "properties": {
+        "department": "External Frontend Contractor",
+        "employment_status": "terminated",
+        "contract_ended": "2026-07-15"
+      }
+    },
+    {
+      "id": "role/LegacyContractorRole",
+      "label": "IAMRole",
+      "name": "LegacyContractorRole",
+      "crown_jewel": false,
+      "compliance_violations": ["SOC2-CC6.3"],
+      "properties": {
+        "created_at": "2025-06-01T08:00:00Z",
+        "description": "Legacy IAM role originally created for offshore frontend audit"
+      }
+    },
+    {
+      "id": "role/SecOpsBreakGlassRole",
+      "label": "IAMRole",
+      "name": "SecOpsBreakGlassRole",
+      "crown_jewel": false,
+      "compliance_violations": ["PCI-DSS-7.1"],
+      "properties": {
+        "created_at": "2024-03-10T12:00:00Z",
+        "description": "Emergency break-glass administrator role with bypass permissions"
+      }
+    },
+    {
+      "id": "s3://corp-secrets-vault",
+      "label": "S3Bucket",
+      "name": "corp-secrets-vault",
+      "data_class": "credential",
+      "crown_jewel": true,
+      "properties": {
+        "encryption": "aws:kms",
+        "data_class": "credential",
+        "mfa_delete": true
+      }
+    },
+    {
+      "id": "kms/master-cloud-key",
+      "label": "KMSKey",
+      "name": "master-cloud-key",
+      "data_class": "credential",
+      "crown_jewel": true,
+      "properties": {
+        "alias": "alias/master-cloud-key",
+        "state": "Enabled"
+      }
+    },
+    {
+      "id": "rds/internal-auth-cluster",
+      "label": "RDSCluster",
+      "name": "internal-auth-cluster",
+      "data_class": "financial",
+      "crown_jewel": true,
+      "properties": {
+        "engine": "Aurora MySQL",
+        "data_class": "financial",
+        "encrypted": true
+      }
+    },
+    {
+      "id": "secret/master-jwt-private-key",
+      "label": "Secret",
+      "name": "master-jwt-private-key",
+      "data_class": "credential",
+      "crown_jewel": true,
+      "properties": {
+        "type": "rsa_private_key",
+        "last_rotated": "2025-01-01T00:00:00Z"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "internet",
+      "to": "vpn-corp-gateway",
+      "type": "EXPOSES",
+      "protocol": "IPsec",
+      "port": 500
+    },
+    {
+      "from": "vpn-corp-gateway",
+      "to": "usr-contractor-ext-44",
+      "type": "AUTHENTICATES"
+    },
+    {
+      "from": "usr-contractor-ext-44",
+      "to": "role/LegacyContractorRole",
+      "type": "CAN_ASSUME",
+      "condition": "sts:AssumeRole",
+      "created_at": "2025-06-01T08:00:00Z"
+    },
+    {
+      "from": "role/LegacyContractorRole",
+      "to": "role/SecOpsBreakGlassRole",
+      "type": "CAN_ASSUME",
+      "condition": "sts:AssumeRole",
+      "created_at": "2025-06-15T10:00:00Z"
+    },
+    {
+      "from": "role/SecOpsBreakGlassRole",
+      "to": "s3://corp-secrets-vault",
+      "type": "HAS_PERMISSION",
+      "actions": ["s3:GetObject", "s3:ListBucket", "s3:PutObject"]
+    },
+    {
+      "from": "role/SecOpsBreakGlassRole",
+      "to": "kms/master-cloud-key",
+      "type": "ACCESSES"
+    },
+    {
+      "from": "role/SecOpsBreakGlassRole",
+      "to": "rds/internal-auth-cluster",
+      "type": "HAS_PERMISSION",
+      "actions": ["rds:*"]
+    },
+    {
+      "from": "role/SecOpsBreakGlassRole",
+      "to": "secret/master-jwt-private-key",
+      "type": "ACCESSES"
+    },
+    {
+      "from": "kms/master-cloud-key",
+      "to": "s3://corp-secrets-vault",
+      "type": "ENCRYPTS"
+    }
+  ]
+}

@@ -8,6 +8,7 @@
     "start": "node src/server/index.js",
     "dev": "node --watch src/server/index.js",
     "test:db": "node scripts/test-db-connection.js",
+    "load:scenario": "node scripts/load-scenario.js",
     "test": "node --test tests/**/*.test.js"
   },
   "keywords": [

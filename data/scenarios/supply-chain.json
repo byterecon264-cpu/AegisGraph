@@ -1,0 +1,187 @@
+{
+  "scenario_id": "supply-chain",
+  "name": "Scenario 2: CI/CD Pipeline & Container Supply Chain Poisoning",
+  "description": "A compromised dependency injected into an automated GitHub Actions runner allows arbitrary execution under the CIRunnerRole. The attacker uses write permissions to push a malicious backdoored container image to ECR, which automatically deploys to the production ECS Checkout cluster and accesses the customer payment records and transaction signing keys.",
+  "metadata": {
+    "cloud_provider": "AWS",
+    "region": "us-west-2",
+    "author": "AegisGraph Core Team",
+    "version": "1.0.0"
+  },
+  "alert": {
+    "id": "alert-supply-chain-gh884",
+    "type": "SUPPLY_CHAIN_POISONING",
+    "severity": "CRITICAL",
+    "target_node": "gh-runner-01",
+    "message": "Backdoored package dependency detected in automated runner pipeline (gh-runner-01) with anomalous outbound DNS exfiltration",
+    "timestamp": "2026-10-15T09:15:00Z",
+    "source": "GitHub Security Advisories & Snyk"
+  },
+  "nodes": [
+    {
+      "id": "internet",
+      "label": "Internet",
+      "name": "Global Internet",
+      "data_class": "public",
+      "crown_jewel": false
+    },
+    {
+      "id": "gh-runner-01",
+      "label": "EC2Instance",
+      "name": "github-actions-runner-01",
+      "crown_jewel": false,
+      "cves": ["CVE-2021-23337"],
+      "properties": {
+        "instance_type": "c6i.xlarge",
+        "runner_version": "2.314.0",
+        "environment": "ci-cd"
+      }
+    },
+    {
+      "id": "role/CIRunnerRole",
+      "label": "IAMRole",
+      "name": "CIRunnerRole",
+      "crown_jewel": false,
+      "compliance_violations": ["SOC2-CC8.1"],
+      "properties": {
+        "created_at": "2026-02-01T10:00:00Z",
+        "description": "CI/CD automated pipeline role with ECR push and ECS update capabilities"
+      }
+    },
+    {
+      "id": "s3://ci-build-cache",
+      "label": "S3Bucket",
+      "name": "ci-build-cache-west2",
+      "data_class": "internal",
+      "crown_jewel": false,
+      "properties": {
+        "encryption": "AES256"
+      }
+    },
+    {
+      "id": "ecr/checkout-service",
+      "label": "ECRRepository",
+      "name": "checkout-service",
+      "crown_jewel": false,
+      "properties": {
+        "scan_on_push": true,
+        "image_tag_mutability": "MUTABLE"
+      }
+    },
+    {
+      "id": "ecs/checkout-prod-service",
+      "label": "ECSService",
+      "name": "checkout-prod-service",
+      "crown_jewel": false,
+      "properties": {
+        "cluster": "prod-services-cluster",
+        "desired_count": 4,
+        "launch_type": "FARGATE"
+      }
+    },
+    {
+      "id": "role/CheckoutTaskRole",
+      "label": "IAMRole",
+      "name": "CheckoutTaskRole",
+      "crown_jewel": false,
+      "compliance_violations": ["PCI-DSS-7.1"],
+      "properties": {
+        "created_at": "2025-12-10T11:00:00Z",
+        "description": "Production task identity granted wide access to transactional datastores"
+      }
+    },
+    {
+      "id": "dynamodb/customer-orders-table",
+      "label": "DynamoDBTable",
+      "name": "customer-orders-table",
+      "data_class": "financial",
+      "crown_jewel": true,
+      "properties": {
+        "billing_mode": "PAY_PER_REQUEST",
+        "point_in_time_recovery": true,
+        "data_class": "financial"
+      }
+    },
+    {
+      "id": "s3://payment-audit-vault",
+      "label": "S3Bucket",
+      "name": "payment-audit-vault",
+      "data_class": "PII",
+      "crown_jewel": true,
+      "properties": {
+        "encryption": "aws:kms",
+        "data_class": "PII",
+        "compliance": "PCI-DSS-Level-1"
+      }
+    },
+    {
+      "id": "kms/payment-signing-key",
+      "label": "KMSKey",
+      "name": "payment-signing-key",
+      "data_class": "credential",
+      "crown_jewel": true,
+      "properties": {
+        "key_usage": "ENCRYPT_DECRYPT",
+        "alias": "alias/payment-signing-key"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "internet",
+      "to": "gh-runner-01",
+      "type": "EXPOSES",
+      "protocol": "HTTPS",
+      "port": 443
+    },
+    {
+      "from": "gh-runner-01",
+      "to": "role/CIRunnerRole",
+      "type": "ATTACHED_TO"
+    },
+    {
+      "from": "role/CIRunnerRole",
+      "to": "s3://ci-build-cache",
+      "type": "HAS_PERMISSION",
+      "actions": ["s3:GetObject", "s3:PutObject"]
+    },
+    {
+      "from": "role/CIRunnerRole",
+      "to": "ecr/checkout-service",
+      "type": "PUSHES_TO",
+      "actions": ["ecr:PutImage", "ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload"]
+    },
+    {
+      "from": "ecr/checkout-service",
+      "to": "ecs/checkout-prod-service",
+      "type": "DEPLOYS_TO"
+    },
+    {
+      "from": "ecs/checkout-prod-service",
+      "to": "role/CheckoutTaskRole",
+      "type": "ATTACHED_TO"
+    },
+    {
+      "from": "role/CheckoutTaskRole",
+      "to": "dynamodb/customer-orders-table",
+      "type": "HAS_PERMISSION",
+      "actions": ["dynamodb:Scan", "dynamodb:Query", "dynamodb:GetItem", "dynamodb:PutItem"]
+    },
+    {
+      "from": "role/CheckoutTaskRole",
+      "to": "s3://payment-audit-vault",
+      "type": "HAS_PERMISSION",
+      "actions": ["s3:GetObject", "s3:ListBucket"]
+    },
+    {
+      "from": "role/CheckoutTaskRole",
+      "to": "kms/payment-signing-key",
+      "type": "ACCESSES"
+    },
+    {
+      "from": "kms/payment-signing-key",
+      "to": "s3://payment-audit-vault",
+      "type": "ENCRYPTS"
+    }
+  ]
+}

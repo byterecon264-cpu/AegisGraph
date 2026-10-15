@@ -1,0 +1,268 @@
+{
+  "scenario_id": "leaked-key",
+  "name": "Scenario 1: Leaked Key & Lateral Movement Attack Path",
+  "description": "A public-facing EC2 instance running a vulnerable web server (CVE-2024-21626) has an attached IAM profile. Lateral movement via chained IAM AssumeRole delegations allows an attacker to escalate from WebServerRole to DevAdmin and ultimately InfraRole, gaining unrestricted access to production RDS financial records and customer backup S3 buckets.",
+  "metadata": {
+    "cloud_provider": "AWS",
+    "region": "us-east-1",
+    "author": "AegisGraph Core Team",
+    "version": "1.0.0"
+  },
+  "alert": {
+    "id": "alert-cve-2024-21626",
+    "type": "VULNERABILITY_EXPLOIT",
+    "severity": "CRITICAL",
+    "target_node": "i-0abc123",
+    "message": "CVE-2024-21626 (container escape) detected on public web instance i-0abc123 with active outbound anomaly",
+    "timestamp": "2026-10-15T08:30:00Z",
+    "source": "AWS GuardDuty & Inspector"
+  },
+  "nodes": [
+    {
+      "id": "internet",
+      "label": "Internet",
+      "name": "Global Internet",
+      "data_class": "public",
+      "crown_jewel": false
+    },
+    {
+      "id": "ip-54-23-45-67",
+      "label": "PublicIP",
+      "name": "54.23.45.67",
+      "data_class": "public",
+      "crown_jewel": false,
+      "properties": {
+        "address": "54.23.45.67",
+        "region": "us-east-1"
+      }
+    },
+    {
+      "id": "vpc-prod-main",
+      "label": "VPC",
+      "name": "vpc-production",
+      "crown_jewel": false,
+      "properties": {
+        "cidr": "10.0.0.0/16",
+        "region": "us-east-1"
+      }
+    },
+    {
+      "id": "sg-web-public",
+      "label": "SecurityGroup",
+      "name": "sg-web-public",
+      "crown_jewel": false,
+      "compliance_violations": ["PCI-DSS-1.2.1"],
+      "properties": {
+        "allows_inbound": "0.0.0.0/0:443, 0.0.0.0/0:80",
+        "allows_outbound": "0.0.0.0/0:ALL"
+      }
+    },
+    {
+      "id": "i-0abc123",
+      "label": "EC2Instance",
+      "name": "web-server-prod",
+      "crown_jewel": false,
+      "cves": ["CVE-2024-21626"],
+      "properties": {
+        "instance_type": "m5.large",
+        "state": "running",
+        "public_ip": "54.23.45.67",
+        "ami_id": "ami-0c7217cdde317cfec"
+      }
+    },
+    {
+      "id": "role/WebServerRole",
+      "label": "IAMRole",
+      "name": "WebServerRole",
+      "crown_jewel": false,
+      "properties": {
+        "created_at": "2026-01-10T12:00:00Z",
+        "trust_policy": "ec2.amazonaws.com"
+      }
+    },
+    {
+      "id": "role/DevAdmin",
+      "label": "IAMRole",
+      "name": "DevAdmin",
+      "crown_jewel": false,
+      "compliance_violations": ["PCI-DSS-7.1"],
+      "properties": {
+        "created_at": "2026-02-15T09:30:00Z",
+        "description": "Developer administration role with over-permissive assume trust"
+      }
+    },
+    {
+      "id": "role/InfraRole",
+      "label": "IAMRole",
+      "name": "InfraRole",
+      "crown_jewel": false,
+      "compliance_violations": ["SOC2-CC6.1"],
+      "properties": {
+        "created_at": "2025-11-20T14:15:00Z",
+        "description": "Infrastructure super-admin with direct data tier access"
+      }
+    },
+    {
+      "id": "role/BillingViewer",
+      "label": "IAMRole",
+      "name": "BillingViewer",
+      "crown_jewel": false,
+      "properties": {
+        "created_at": "2026-03-01T10:00:00Z"
+      }
+    },
+    {
+      "id": "s3://app-assets-prod",
+      "label": "S3Bucket",
+      "name": "app-assets-prod",
+      "data_class": "public",
+      "crown_jewel": false,
+      "properties": {
+        "encryption": "AES256",
+        "public_access": true
+      }
+    },
+    {
+      "id": "rds/prod-customer-db",
+      "label": "RDSCluster",
+      "name": "prod-customer-db",
+      "data_class": "financial",
+      "crown_jewel": true,
+      "properties": {
+        "engine": "PostgreSQL 15.4",
+        "data_class": "financial",
+        "encrypted": true,
+        "multi_az": true
+      }
+    },
+    {
+      "id": "s3://customer-backups-prod",
+      "label": "S3Bucket",
+      "name": "customer-backups-prod",
+      "data_class": "PII",
+      "crown_jewel": true,
+      "properties": {
+        "encryption": "aws:kms",
+        "data_class": "PII",
+        "versioning": true
+      }
+    },
+    {
+      "id": "secret/db-master-password",
+      "label": "Secret",
+      "name": "db-master-password",
+      "data_class": "credential",
+      "crown_jewel": true,
+      "properties": {
+        "type": "database_credentials",
+        "last_rotated": "2025-10-01T00:00:00Z"
+      }
+    },
+    {
+      "id": "kms/customer-data-key",
+      "label": "KMSKey",
+      "name": "customer-data-key",
+      "crown_jewel": false,
+      "properties": {
+        "alias": "alias/customer-data-key",
+        "state": "Enabled"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "internet",
+      "to": "ip-54-23-45-67",
+      "type": "EXPOSES",
+      "protocol": "TCP",
+      "port": 443
+    },
+    {
+      "from": "ip-54-23-45-67",
+      "to": "sg-web-public",
+      "type": "ROUTES_TO"
+    },
+    {
+      "from": "sg-web-public",
+      "to": "i-0abc123",
+      "type": "ALLOWS_TRAFFIC",
+      "protocol": "TCP",
+      "port": 443
+    },
+    {
+      "from": "i-0abc123",
+      "to": "vpc-prod-main",
+      "type": "BELONGS_TO"
+    },
+    {
+      "from": "sg-web-public",
+      "to": "vpc-prod-main",
+      "type": "BELONGS_TO"
+    },
+    {
+      "from": "i-0abc123",
+      "to": "role/WebServerRole",
+      "type": "ATTACHED_TO"
+    },
+    {
+      "from": "role/WebServerRole",
+      "to": "s3://app-assets-prod",
+      "type": "HAS_PERMISSION",
+      "actions": ["s3:GetObject", "s3:ListBucket"]
+    },
+    {
+      "from": "role/WebServerRole",
+      "to": "role/DevAdmin",
+      "type": "CAN_ASSUME",
+      "condition": "sts:AssumeRole",
+      "created_at": "2026-02-15T09:30:00Z"
+    },
+    {
+      "from": "role/DevAdmin",
+      "to": "role/InfraRole",
+      "type": "CAN_ASSUME",
+      "condition": "sts:AssumeRole",
+      "created_at": "2026-03-01T11:20:00Z"
+    },
+    {
+      "from": "role/DevAdmin",
+      "to": "role/BillingViewer",
+      "type": "CAN_ASSUME",
+      "condition": "sts:AssumeRole",
+      "created_at": "2026-03-05T14:00:00Z"
+    },
+    {
+      "from": "role/InfraRole",
+      "to": "rds/prod-customer-db",
+      "type": "HAS_PERMISSION",
+      "actions": ["rds:*", "rds-db:connect"]
+    },
+    {
+      "from": "role/InfraRole",
+      "to": "s3://customer-backups-prod",
+      "type": "HAS_PERMISSION",
+      "actions": ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
+    },
+    {
+      "from": "role/InfraRole",
+      "to": "secret/db-master-password",
+      "type": "ACCESSES"
+    },
+    {
+      "from": "role/InfraRole",
+      "to": "kms/customer-data-key",
+      "type": "HAS_PERMISSION",
+      "actions": ["kms:Decrypt", "kms:DescribeKey"]
+    },
+    {
+      "from": "kms/customer-data-key",
+      "to": "rds/prod-customer-db",
+      "type": "ENCRYPTS"
+    },
+    {
+      "from": "kms/customer-data-key",
+      "to": "s3://customer-backups-prod",
+      "type": "ENCRYPTS"
+    }
+  ]
+}
